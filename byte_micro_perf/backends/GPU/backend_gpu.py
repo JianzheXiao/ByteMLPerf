@@ -30,13 +30,13 @@ class BackendGPU(Backend):
         self.op = AllToAllOp(self.group)
 
     def host2device(self):
-        pass
+        self.op = Host2DeviceOp(torch.device('cuda'))
 
     def device2host(self):
-        pass            
+        self.op = Device2HostOp()            
 
     def build_tensor(self, input_shapes, dtype):
-        tensors = [torch.randn(shape).type(getattr(torch, self.dtype)).cuda() for shape in input_shapes]
+        tensors = [torch.randn(shape).type(getattr(torch, self.dtype)).to(torch.device(self.device)) for shape in input_shapes]
         return tensors
 
     def _run_operation(self, operation, inputs):

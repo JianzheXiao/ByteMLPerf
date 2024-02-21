@@ -7,5 +7,6 @@
             65536
         ]
     ],
-    "dtype": "float32"
+    "dtype": "float32",
+    "device": "cuda"
 }

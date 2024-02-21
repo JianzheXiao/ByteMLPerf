@@ -15,6 +15,7 @@ class Backend(ABC):
         self.rank = None
         self.world_size = None
         self.group = None
+        self.device = workload_dict['device']
 
     def initialize_ccl(self):
         pass
@@ -72,10 +73,14 @@ class Backend(ABC):
             total_time +=execution_time
 
         latency = round(total_time *1e6 / self.iterations, 2) 
-        local_rank = int(os.environ["LOCAL_RANK"])
 
         if self.op_name in ['allreduce', 'allgather', 'reducescatter', 'alltoall']:
-            report = dump_communication_ops_report(self.op_name, self.dtype, input_shapes, self.group.size(), latency)
+            local_rank = int(os.environ["LOCAL_RANK"])
+            if local_rank == 0:
+                report = dump_communication_ops_report(self.op_name, self.dtype, input_shapes, self.group.size(), latency)
+                exit
+            else:
+                pass    
         else:
             report = dump_computation_ops_report(self.dtype, input_shapes, latency)    
         return report

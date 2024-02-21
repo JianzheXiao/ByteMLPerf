@@ -9,5 +9,6 @@
         ]
     ],
     "dtype": "float32",
+    "device": "cuda",
     "group": 4
 }
