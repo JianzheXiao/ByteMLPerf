@@ -1,7 +1,12 @@
 {
-    "operator": "allreduce",
+    "operator": "alltoall",
     "iterations": 1000,
     "input_shape_list": [
+        [
+            1,
+            1024,
+            1024
+        ],
         [
             1,
             1024,

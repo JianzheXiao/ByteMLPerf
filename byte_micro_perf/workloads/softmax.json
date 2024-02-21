@@ -1,6 +1,11 @@
 {
     "operator": "softmax",
-    "iterations": 10000,
-    "input_shape_list": [[64 , 2048, 65536]],
+    "iterations": 1000,
+    "input_shape_list": [
+        [
+            512,
+            65536
+        ]
+    ],
     "dtype": "float32"
 }

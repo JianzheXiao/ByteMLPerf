@@ -1,5 +1,5 @@
 {
-    "operator": "allreduce",
+    "operator": "host2device",
     "iterations": 1000,
     "input_shape_list": [
         [
@@ -8,6 +8,5 @@
             1024
         ]
     ],
-    "dtype": "float32",
-    "group": 4
+    "dtype": "float32"
 }

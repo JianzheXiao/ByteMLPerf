@@ -15,7 +15,25 @@ class BackendGPU(Backend):
 
     def allreduce(self):
         self.setup_2d_group()
-        self.op = AllReduceOp(self.group)        
+        self.op = AllReduceOp(self.group)
+
+    def allgather(self):
+        self.setup_2d_group()
+        self.op = AllGatherOp(self.group)
+
+    def reducescatter(self):
+        self.setup_2d_group()
+        self.op = ReduceScatterOp(self.group)
+
+    def alltoall(self):
+        self.setup_2d_group()
+        self.op = AllToAllOp(self.group)
+
+    def host2device(self):
+        pass
+
+    def device2host(self):
+        pass            
 
     def build_tensor(self, input_shapes, dtype):
         tensors = [torch.randn(shape).type(getattr(torch, self.dtype)).cuda() for shape in input_shapes]

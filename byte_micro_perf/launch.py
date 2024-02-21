@@ -59,8 +59,7 @@ if __name__ == '__main__':
 
         subprocess.call([
             'python3', '-m', 'pip', 'install', '-r', 'requirements.txt', '--quiet'])
-        
-        if args.task in ["allreduce"]:
+        if args.task in ["allreduce", "allgather", "reducescatter", "alltoall"]:
             cmd = "torchrun --nnodes 1 --nproc_per_node {} --node_rank 0 --master_addr 127.0.0.1 --master_port 49373 \
                     core/perf_engine.py --hardware_type {} --task {}" \
                     .format(args.group, args.hardware_type, args.task)

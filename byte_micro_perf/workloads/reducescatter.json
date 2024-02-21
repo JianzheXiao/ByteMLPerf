@@ -1,5 +1,5 @@
 {
-    "operator": "allreduce",
+    "operator": "reducescatter",
     "iterations": 1000,
     "input_shape_list": [
         [

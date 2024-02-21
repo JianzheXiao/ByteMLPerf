@@ -147,12 +147,16 @@ class PerfEngine:
             shape_list = []
             for M, N, K in self.workload['M/N/K']:
                 shape_list.append([[M,N], [N,K]])
-
-        for input_shape in shape_list:
-            if isinstance(input_shape[0], int):
-                input_shape = [input_shape]
-            reports = self.backend.perf(input_shape)
+        # all2all needs two inputs       
+        if workload['operator'] == "alltoall":
+            reports = self.backend.perf(shape_list)
             perf_reports.append(reports)
+        else:    
+            for input_shape in shape_list:
+                if isinstance(input_shape[0], int):
+                    input_shape = [input_shape]
+                reports = self.backend.perf(input_shape)
+                perf_reports.append(reports)
         base_report['Performance'] = perf_reports
         print(base_report)
         # write output to json file
