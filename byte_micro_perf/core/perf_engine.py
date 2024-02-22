@@ -22,6 +22,10 @@ import sys
 import virtualenv
 from typing import Any, List, Dict
 
+import torch
+import torch_npu
+import torch.multiprocessing as mp
+
 BYTE_MLPERF_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, BYTE_MLPERF_ROOT)
 
@@ -41,7 +45,7 @@ def get_args():
     parser.add_argument(
         "--hardware_type",
         default="GPU",
-        help="The backend going to be evaluted, refs to backends/")
+        help="The backend going to be evaluted, refs to backends/") 
     parser.add_argument("--compile_only",
                         action='store_true',
                         help="Run compilation only")
@@ -49,7 +53,7 @@ def get_args():
     args = parser.parse_args()
     return args
 
-def load_workload(task: str) -> Dict[str, Any]:
+def load_workload(task: str, backend_type: str) -> Dict[str, Any]:
     """
     Return a list of dictionary with model Configuration
 
@@ -58,7 +62,7 @@ def load_workload(task: str) -> Dict[str, Any]:
     Returns: List[dic]
     """
     modules_dir = os.path.dirname(os.path.dirname(
-        os.path.abspath(__file__))) + '/workloads'
+        os.path.abspath(__file__))) + '/workloads/' + '{}'.format(backend_type.upper())
 
     for file in os.listdir(modules_dir):
         path = os.path.join(modules_dir, file)
@@ -66,7 +70,7 @@ def load_workload(task: str) -> Dict[str, Any]:
                 and (file.endswith('.json') or os.path.isdir(path))
                 and file[:file.find('.json')] == task):
             module_name = file
-            with open("workloads/" + module_name, 'r') as f:
+            with open("workloads/{}/".format(backend_type.upper()) + module_name, 'r') as f:
                 workload_dict = json.load(f)
             return workload_dict
     else:
@@ -74,16 +78,24 @@ def load_workload(task: str) -> Dict[str, Any]:
             "Task name: [ {} ] was not found, please check your task name".
             format(task))
 
-
 class PerfEngine:
     def __init__(self) -> None:
         super().__init__()
         self.args = get_args()
-        self.workload = load_workload(self.args.task)
+        self.workload = load_workload(self.args.task, self.args.hardware_type)
         self.backend_type = self.args.hardware_type
         self.old_os_path = os.environ['PATH']
         self.prev_sys_path = list(sys.path)
         self.real_prefix = sys.prefix
+
+    def init_process(self, rank: int, world_size: int, dist_backend: str):
+        """ 
+        Initialize the distributed environment. 
+
+        """
+        initialize_func = getattr(self.backend, "initialize_ccl")
+        initialize_func(rank, world_size, dist_backend)
+        status = self.start_perf(self.workload)    
 
     def init_backend(self, hardware_type: str) -> Backend:
         """
@@ -101,21 +113,28 @@ class PerfEngine:
                                                 hardware_type.lower())
         backend = getattr(backend,
                                 "Backend" + hardware_type)
-        return backend(self.workload['iterations'], self.workload['dtype'])
+        return backend(self.workload)
 
     def start_engine(self) -> None:
-        status = self.activate_venv(self.backend_type)
-        if not status:
-            log.warning("Activate virtualenv Failed, Please Check...")
+        # status = self.activate_venv(self.backend_type)
+        # if not status:
+        #     log.warning("Activate virtualenv Failed, Please Check...")
 
         self.backend = self.init_backend(self.backend_type)
         output_dir = os.path.abspath('reports/' +
                                      self.backend_type)
         os.makedirs(output_dir, exist_ok=True)
 
-        status = self.start_perf(self.workload)
+        if self.args.task in ["allreduce", "allgather", "reducescatter", "alltoall"]:
+            mp.spawn(
+                fn = self.init_process,
+                args=(self.workload['group'], self.workload['dist_backend']),
+                nprocs=self.workload['group']
+            )
+        else:
+            status = self.start_perf(self.workload)
 
-        self.deactivate_venv()
+        # self.deactivate_venv()
 
     def start_perf(
             self, workload: Dict[str, Any]) -> bool:
@@ -147,7 +166,7 @@ class PerfEngine:
             shape_list = []
             for M, N, K in self.workload['M/N/K']:
                 shape_list.append([[M,N], [N,K]])
-
+                
         for input_shape in shape_list:
             if isinstance(input_shape[0], int):
                 input_shape = [input_shape]
@@ -198,7 +217,7 @@ class PerfEngine:
                 python_path = os.path.join(venv_dir, 'bin', 'python3')
                 subprocess.call([
                     python_path, '-m', 'pip', 'install', '--upgrade', 'pip', '--quiet'
-                ])
+                ])      
                 subprocess.call([
                     python_path, '-m', 'pip', 'install', '-r', 'backends/' +
                     hardware_type + '/requirements.txt', '-q'
@@ -210,8 +229,7 @@ class PerfEngine:
         return True
 
     def deactivate_venv(self):
-        sys.path[:
-                 0] = self.prev_sys_path  #will also revert the added site-packages
+        sys.path[:0] = self.prev_sys_path  #will also revert the added site-packages
         sys.prefix = self.real_prefix
         os.environ['PATH'] = self.old_os_path
 

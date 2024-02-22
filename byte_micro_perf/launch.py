@@ -26,7 +26,7 @@ if __name__ == '__main__':
     parser.add_argument(
         "--hardware_type",
         default="CPU",
-        help="The backend going to be evaluted, refs to backends/")
+        help="The backend going to be evaluted, refs to backends/")         
     parser.add_argument("--compile_only",
                         action='store_true',
                         help="Task will stoped after compilation finished")
@@ -52,10 +52,9 @@ if __name__ == '__main__':
         subprocess.call([
             'python3', '-m', 'pip', 'install', 'pip', '--upgrade', '--quiet'])
 
-        # subprocess.call([
-        #     'python3', '-m', 'pip', 'install', '-r', 'requirements.txt', '--quiet'])
-
-
-        cmd = f'python3 core/perf_engine.py --hardware_type {args.hardware_type} --task {args.task}'
+        subprocess.call([
+            'python3', '-m', 'pip', 'install', '-r', 'requirements.txt', '--quiet'])
+            
+        cmd = "python3 core/perf_engine.py --hardware_type {} --task {}".format(args.hardware_type, args.task)
         exit_code = subprocess.call(cmd, shell=True)
         sys.exit(exit_code)
