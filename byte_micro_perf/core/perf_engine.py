@@ -20,10 +20,10 @@ import importlib
 import subprocess
 import sys
 import virtualenv
-from datetime import timedelta
 from typing import Any, List, Dict
 
 import torch
+import torch_npu
 import torch.multiprocessing as mp
 
 BYTE_MLPERF_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -53,7 +53,7 @@ def get_args():
     args = parser.parse_args()
     return args
 
-def load_workload(task: str) -> Dict[str, Any]:
+def load_workload(task: str, backend_type: str) -> Dict[str, Any]:
     """
     Return a list of dictionary with model Configuration
 
@@ -62,7 +62,7 @@ def load_workload(task: str) -> Dict[str, Any]:
     Returns: List[dic]
     """
     modules_dir = os.path.dirname(os.path.dirname(
-        os.path.abspath(__file__))) + '/workloads'
+        os.path.abspath(__file__))) + '/workloads/' + '{}'.format(backend_type.upper())
 
     for file in os.listdir(modules_dir):
         path = os.path.join(modules_dir, file)
@@ -70,7 +70,7 @@ def load_workload(task: str) -> Dict[str, Any]:
                 and (file.endswith('.json') or os.path.isdir(path))
                 and file[:file.find('.json')] == task):
             module_name = file
-            with open("workloads/" + module_name, 'r') as f:
+            with open("workloads/{}/".format(backend_type.upper()) + module_name, 'r') as f:
                 workload_dict = json.load(f)
             return workload_dict
     else:
@@ -78,39 +78,24 @@ def load_workload(task: str) -> Dict[str, Any]:
             "Task name: [ {} ] was not found, please check your task name".
             format(task))
 
-def init_process(rank: int, world_size: int, func):
-    """ 
-    Initialize the distributed environment. 
-    
-    """
-    torch.manual_seed(1)
-    os.environ['MASTER_ADDR'] = '127.0.0.1'
-    os.environ['MASTER_PORT'] = '49373'
-    os.environ['LOCAL_RANK'] = str(rank)
-    os.environ['RANK'] = str(rank)
-    os.environ['WORLD_SIZE'] = str(world_size)
-
-    torch.cuda.set_device(rank)
-    # Call the init process
-    timeout_seconds = int(os.environ.get("MEGATRON_NCCL_TIMEOUT_SECOND", 30))
-    torch.distributed.init_process_group(
-        backend="nccl",
-        world_size=world_size,
-        rank=rank,
-        store=None,
-        timeout=timedelta(seconds=timeout_seconds))
-    print(f'DIST INFO: rank {rank}, world_size {world_size}', flush=True)
-    func()
-
 class PerfEngine:
     def __init__(self) -> None:
         super().__init__()
         self.args = get_args()
-        self.workload = load_workload(self.args.task)
+        self.workload = load_workload(self.args.task, self.args.hardware_type)
         self.backend_type = self.args.hardware_type
         self.old_os_path = os.environ['PATH']
         self.prev_sys_path = list(sys.path)
         self.real_prefix = sys.prefix
+
+    def init_process(self, rank: int, world_size: int, dist_backend: str):
+        """ 
+        Initialize the distributed environment. 
+
+        """
+        initialize_func = getattr(self.backend, "initialize_ccl")
+        initialize_func(rank, world_size, dist_backend)
+        status = self.start_perf(self.workload)    
 
     def init_backend(self, hardware_type: str) -> Backend:
         """
@@ -140,7 +125,14 @@ class PerfEngine:
                                      self.backend_type)
         os.makedirs(output_dir, exist_ok=True)
 
-        status = self.start_perf(self.workload)
+        if self.args.task in ["allreduce", "allgather", "reducescatter", "alltoall"]:
+            mp.spawn(
+                fn = self.init_process,
+                args=(self.workload['group'], self.workload['dist_backend']),
+                nprocs=self.workload['group']
+            )
+        else:
+            status = self.start_perf(self.workload)
 
         # self.deactivate_venv()
 
@@ -243,11 +235,4 @@ class PerfEngine:
 
 if __name__ == "__main__":
     engine = PerfEngine()
-    if engine.args.task in ["allreduce", "allgather", "reducescatter", "alltoall"]:
-        mp.spawn(
-            fn = init_process,
-            args=(engine.workload['group'], engine.start_engine),
-            nprocs=engine.workload['group']
-        )
-    else:
-        engine.start_engine()
+    engine.start_engine()

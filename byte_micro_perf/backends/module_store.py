@@ -40,9 +40,12 @@ class AllGatherOp(torch.nn.Module):
     def __init__(self, group):
         super().__init__()
         self.group = group
-
-    def forward(self, input_tensors):
-        input_tensor_list = list(torch.chunk(input_tensors[0], dist.get_world_size(self.group)))
+    
+    def process_tensor(self, input_tensor):
+        input_tensor_list = list(torch.chunk(input_tensor, dist.get_world_size(self.group)))
+        return [input_tensor_list]
+    
+    def forward(self, input_tensor_list):
         dist.all_gather(input_tensor_list, input_tensor_list[dist.get_rank(self.group)], group = self.group)
         return True
 
@@ -50,8 +53,12 @@ class ReduceScatterOp(torch.nn.Module):
     def __init__(self, group):
         super().__init__()
         self.group = group
-    def forward(self, input_tensors):
-        input_tensor_list = list(torch.chunk(input_tensors[0], dist.get_world_size(self.group)))
+    
+    def process_tensor(self, input_tensor):
+        input_tensor_list = list(torch.chunk(input_tensor, dist.get_world_size(self.group)))
+        return [input_tensor_list]
+    
+    def forward(self, input_tensor_list):
         dist.reduce_scatter(input_tensor_list[dist.get_rank(self.group)], input_tensor_list, group = self.group)
         return True
 
@@ -59,10 +66,14 @@ class AllToAllOp(torch.nn.Module):
     def __init__(self, group):
         super().__init__()
         self.group = group
-
-    def forward(self, input_tensors):
-        in_tensors_list = list(torch.chunk(input_tensors[0], dist.get_world_size(self.group)))
-        out_tensors_list = list(torch.chunk(torch.empty_like(input_tensors[0]), dist.get_world_size(self.group)))
+    
+    def process_tensor(self, input_tensor):
+        type(input_tensor)
+        input_tensor_list = list(torch.chunk(input_tensor, dist.get_world_size(self.group)))
+        output_tensor_list = list(torch.chunk(input_tensor, dist.get_world_size(self.group)))
+        return [input_tensor_list, output_tensor_list]
+    
+    def forward(self, in_tensors_list, out_tensors_list):
         dist.all_to_all(out_tensors_list, in_tensors_list, group = self.group)
         return True
 
