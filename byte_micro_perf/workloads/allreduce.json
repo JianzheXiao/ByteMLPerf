@@ -3,12 +3,12 @@
     "iterations": 1000,
     "input_shape_list": [
         [
-            1,
+            4,
             1024,
             1024
         ]
     ],
     "dtype": "float32",
     "device": "cuda",
-    "group": 4
+    "group": 2
 }

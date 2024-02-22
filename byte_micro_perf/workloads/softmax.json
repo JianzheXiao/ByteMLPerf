@@ -3,7 +3,7 @@
     "iterations": 1000,
     "input_shape_list": [
         [
-            512,
+            128,
             65536
         ]
     ],

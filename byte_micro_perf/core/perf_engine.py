@@ -20,7 +20,11 @@ import importlib
 import subprocess
 import sys
 import virtualenv
+from datetime import timedelta
 from typing import Any, List, Dict
+
+import torch
+import torch.multiprocessing as mp
 
 BYTE_MLPERF_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, BYTE_MLPERF_ROOT)
@@ -74,6 +78,29 @@ def load_workload(task: str) -> Dict[str, Any]:
             "Task name: [ {} ] was not found, please check your task name".
             format(task))
 
+def init_process(rank: int, world_size: int, func):
+    """ 
+    Initialize the distributed environment. 
+    
+    """
+    torch.manual_seed(1)
+    os.environ['MASTER_ADDR'] = '127.0.0.1'
+    os.environ['MASTER_PORT'] = '49373'
+    os.environ['LOCAL_RANK'] = str(rank)
+    os.environ['RANK'] = str(rank)
+    os.environ['WORLD_SIZE'] = str(world_size)
+
+    torch.cuda.set_device(rank)
+    # Call the init process
+    timeout_seconds = int(os.environ.get("MEGATRON_NCCL_TIMEOUT_SECOND", 30))
+    torch.distributed.init_process_group(
+        backend="nccl",
+        world_size=world_size,
+        rank=rank,
+        store=None,
+        timeout=timedelta(seconds=timeout_seconds))
+    print(f'DIST INFO: rank {rank}, world_size {world_size}', flush=True)
+    func()
 
 class PerfEngine:
     def __init__(self) -> None:
@@ -147,16 +174,12 @@ class PerfEngine:
             shape_list = []
             for M, N, K in self.workload['M/N/K']:
                 shape_list.append([[M,N], [N,K]])
-        # all2all needs two inputs       
-        if workload['operator'] == "alltoall":
-            reports = self.backend.perf(shape_list)
+                
+        for input_shape in shape_list:
+            if isinstance(input_shape[0], int):
+                input_shape = [input_shape]
+            reports = self.backend.perf(input_shape)
             perf_reports.append(reports)
-        else:    
-            for input_shape in shape_list:
-                if isinstance(input_shape[0], int):
-                    input_shape = [input_shape]
-                reports = self.backend.perf(input_shape)
-                perf_reports.append(reports)
         base_report['Performance'] = perf_reports
         print(base_report)
         # write output to json file
@@ -214,11 +237,17 @@ class PerfEngine:
         return True
 
     def deactivate_venv(self):
-        sys.path[:
-                 0] = self.prev_sys_path  #will also revert the added site-packages
+        sys.path[:0] = self.prev_sys_path  #will also revert the added site-packages
         sys.prefix = self.real_prefix
         os.environ['PATH'] = self.old_os_path
 
 if __name__ == "__main__":
     engine = PerfEngine()
-    engine.start_engine()
+    if engine.args.task in ["allreduce", "allgather", "reducescatter", "alltoall"]:
+        mp.spawn(
+            fn = init_process,
+            args=(engine.workload['group'], engine.start_engine),
+            nprocs=engine.workload['group']
+        )
+    else:
+        engine.start_engine()

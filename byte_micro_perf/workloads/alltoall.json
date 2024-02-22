@@ -3,14 +3,8 @@
     "iterations": 1000,
     "input_shape_list": [
         [
-            1,
-            1024,
-            1024
-        ],
-        [
-            1,
-            1024,
-            1024
+            4,
+            16
         ]
     ],
     "dtype": "float32",
